@@ -1,0 +1,352 @@
+// `include "testing_pkg.sv"    
+// import testing_pkg::*;     
+
+module MAC_tb();
+    
+
+    parameter int DATA_WIDTH = 8;
+    typedef logic signed [DATA_WIDTH-1:0] data_t;
+
+    localparam int ACCUM_WIDTH = 2*DATA_WIDTH;
+    typedef logic signed [ACCUM_WIDTH-1:0] accum_t;
+
+
+    // Testbench Inputs
+    logic rst_n;
+    logic clk;
+    logic clr;
+    logic running;
+    logic signed [7:0] in1;
+    logic signed [7:0] in2;
+
+    // Testbench Outputs
+    logic signed [15:0] total;
+    logic err;
+
+    /**************************************************************************
+    ***                            Test Suite 1                             ***
+    **************************************************************************/
+    MAC #(
+        .DATA_WIDTH     (8),
+        .ACCUM_WIDTH    (2*DATA_WIDTH)
+    ) iDUT (
+        // Basic Inputs
+        .rst_n          (rst_n),
+        .clk            (clk),
+        // Control Inputs
+        .clr            (clr),
+        .running        (running),
+        // Data Inputs
+        .in1            (in1),
+        .in2            (in2),
+        
+        // Data Outputs 
+        .total          (total),
+        .err            (err)
+    );
+
+    always #5 clk = ~clk;
+
+    initial begin
+        //Settng to defaults
+        clk = 1'b1;
+        rst_n = 1'b0;
+
+        clr = 1'b0;
+        running = 1'b0;
+        
+        in1 = '1;
+        in2 = '1;
+
+        // Test 1: Ensure all values stay default
+        checkValues16(
+            .refclk(clk),                // clock signal
+            .sig2watch(total),           // signal to watch
+            .goal_value(16'h0000),       // expected value
+            .clks2wait(100),             // cycles to wait
+            .testnum(1),                 // test number
+            .valHold(1'b1)               // hold value
+        );
+
+        // Test 2: Step through each value 
+        @(posedge clk);
+        rst_n = 1'b1;
+        clr = 1'b0;
+        running = 1'b0;
+        in1 = 8'h01;
+        in2 = 8'h01;
+
+        @(negedge clk);
+        @(negedge clk);
+
+        checkValues16(
+            .refclk(clk),                // clock signal
+            .sig2watch(total),           // signal to watch
+            .goal_value(16'h0000),       // expected value
+            .clks2wait(100),             // cycles to wait
+            .testnum(2),                 // test number
+            .valHold(1'b1)               // hold value
+        );
+
+        // Test 3: check if we hold our value after one accumulation
+        @(negedge clk);
+        clr = 1'b0;
+        running = 1'b1;
+        in1 = 8'h01;
+        in2 = 8'h01;
+
+        @(negedge clk);
+        running = 1'b0;
+
+        checkValues16(
+            .refclk(clk),                // clock signal
+            .sig2watch(total),           // signal to watch
+            .goal_value(16'h0001),       // expected value
+            .clks2wait(20),              // cycles to wait
+            .testnum(3),                 // test number
+            .valHold(1'b1)               // hold value
+        );
+
+        // Test 4: Ensure clr sets system back to 0
+        @(negedge clk);
+        clr = 1'b1;
+        running = 1'b0;
+        in1 = 8'h01;
+        in2 = 8'h01;
+
+        checkValues16(
+            .refclk(clk),                // clock signal
+            .sig2watch(total),           // signal to watch
+            .goal_value(16'h0000),       // expected value
+            .clks2wait(1),               // cycles to wait
+            .testnum(4),                 // test number
+            .valHold(1'b1)               // hold value
+        );
+
+        @(negedge clk);
+        clr = 1'b0;
+
+        checkValues16(
+            .refclk(clk),                // clock signal
+            .sig2watch(total),           // signal to watch
+            .goal_value(16'h0000),       // expected value
+            .clks2wait(20),              // cycles to wait
+            .testnum(4),                 // test number
+            .valHold(1'b1)               // hold value
+        );
+
+        // Test 5: Step through each value 
+        @(negedge clk);
+        clr = 1'b0;
+        running = 1'b1;
+        in1 = 8'h01;
+        in2 = 8'h01;
+
+        checkValues16(
+            .refclk(clk),                // clock signal
+            .sig2watch(total),           // signal to watch
+            .goal_value(16'h005A),       // expected value 
+            .clks2wait(89),              // cycles to wait
+            .testnum(5),                 // test number
+            .valHold(1'b0)               // hold value
+        );
+
+        /**********************************************************************
+        ******                  Overflow edge cases                      ******
+        **********************************************************************/
+
+        // Test 6: Positive overflow quickly: (-128 * -128) = 16384; 2 adds overflow
+        @(negedge clk);
+        clr = 1'b1; @(negedge clk); clr = 1'b0;
+        running = 1'b1;
+        in1 = -128;
+        in2 = -128;
+        checkValues1(
+            .refclk(clk),
+            .sig2watch(err),
+            .clks2wait(3),
+            .testnum(6),
+
+            .valHold(1'b1),
+            .goal_value(1'b1)
+        );
+        running = 1'b0;
+
+        // Test 7: Positive overflow: (127 * 127) = 16129; 3 adds overflow
+        @(negedge clk);
+        clr = 1'b1; 
+        @(negedge clk); 
+        clr = 1'b0;
+
+        checkValues1(
+            .refclk(clk),
+            .sig2watch(err),
+            .clks2wait(4),
+            .testnum(7.1),
+
+            
+            .valHold(1'b1),
+            .goal_value(1'b0)
+        );
+
+
+
+        running = 1'b1;
+        in1 = 8'sd127;
+        in2 = 8'sd127;
+        checkValues1(
+            .refclk(clk),
+            .sig2watch(err),
+            .clks2wait(4),
+            .testnum(7),
+
+            
+            .valHold(1'b1),
+            .goal_value(1'b1)
+        );
+        running = 1'b0;
+
+        // Test 8: Negative overflow: (-128 * 127) = -16256; 3 adds overflow (underflow)
+        @(negedge clk);
+        clr = 1'b1; @(negedge clk); clr = 1'b0;
+        running = 1'b1;
+        in1 = -128;
+        in2 = 8'sd127;
+        checkValues1(
+            .refclk(clk),
+            .sig2watch(err),
+            .clks2wait(4),
+            .testnum(8),
+
+            
+            .valHold(1'b1),
+            .goal_value(1'b1)
+        );
+        running = 1'b0;
+
+
+    print_all_passed_banner();
+
+
+        
+    end
+
+function automatic void print_all_passed_banner();
+    $display("\n\n");
+    $display("YYYY   YYYY   AA      H   H   OOOOO   OOOOO   OOOOO   !!");
+    $display(" YYY   YYY   AAAA     H   H   O   O   O   O   O   O   !!");
+    $display("  YYY YYY   AA  AA    H   H   O   O   O   O   O   O   !!");
+    $display("   YYYYY   AA    AA   HHHHH   O   O   O   O   O   O   !!");
+    $display("    YYY    AAAAAAAA   H   H   O   O   O   O   O   O      ");
+    $display("    YYY    AA    AA   H   H   OOOOO   OOOOO   OOOOO   !!");
+    $display("\n");
+    $display("ALL TESTS PASSED!");
+    $display("\n\n");
+  endfunction
+
+  // ------------------------------------------------------------
+  // Tasks
+  // ------------------------------------------------------------
+task automatic checkValues1 (
+    ref   logic     refclk,
+    ref   logic     sig2watch,   // ref so we see live changes
+    input logic     goal_value,
+    input int       clks2wait,
+    input int       testnum,
+    input bit       valHold
+);
+    reg signalAsserted;
+    signalAsserted = 0;
+
+    $display("Running test %0d", testnum);
+
+    fork
+        begin : TRACK
+            wait (sig2watch == goal_value);
+            signalAsserted = 1;
+        end
+        begin : TIMEOUT
+            repeat (clks2wait) @(negedge refclk);
+            disable TRACK;
+        end
+    join
+
+    @(negedge refclk)
+    if (sig2watch === goal_value)
+        $display("Passed. Yahoo!");
+    else if (signalAsserted & valHold)
+        $error("Flaked: reached goal but did not hold.");
+    else 
+        $error("Timeout after %0d cycles: sig=%0d, goal=%0d", clks2wait, sig2watch, goal_value);
+endtask
+
+
+task automatic checkValues8 (
+    ref   logic     refclk,
+    ref   logic signed [7:0]    sig2watch,   // ref so we see live changes
+    input logic signed [7:0]     goal_value,
+    input int       clks2wait,
+    input int       testnum,
+    input bit       valHold
+);
+    reg signalAsserted;
+    signalAsserted = 0;
+
+    $display("Running test %0d", testnum);
+
+    fork
+        begin : TRACK
+            wait (sig2watch == goal_value);
+            signalAsserted = 1;
+        end
+        begin : TIMEOUT
+            repeat (clks2wait) @(negedge refclk);
+            disable TRACK;
+        end
+    join
+
+    @(negedge refclk)
+    if (sig2watch === goal_value)
+        $display("Passed. Yahoo!");
+    else if (signalAsserted & valHold)
+        $error("Flaked: reached goal but did not hold.");
+    else 
+        $error("Timeout after %0d cycles: sig=%0d, goal=%0d", clks2wait, sig2watch, goal_value);
+endtask
+
+
+task automatic checkValues16 (
+    ref   logic     refclk,
+    ref   logic signed [15:0]    sig2watch,   // ref so we see live changes
+    input logic signed [15:0]    goal_value,
+    input int       clks2wait,
+    input int       testnum,
+    input bit       valHold
+);
+    reg signalAsserted;
+    signalAsserted = 0;
+
+    $display("Running test %0d", testnum);
+
+    fork
+        begin : TRACK
+            wait (sig2watch == goal_value);
+            signalAsserted = 1;
+        end
+        begin : TIMEOUT
+            repeat (clks2wait) @(negedge refclk);
+            disable TRACK;
+        end
+    join
+
+    @(negedge refclk)
+    if (sig2watch === goal_value)
+        $display("Passed. Yahoo!");
+    else if (signalAsserted & valHold)
+        $error("Flaked: reached goal but did not hold.");
+    else 
+        $error("Timeout after %0d cycles: sig=%0d, goal=%0d", clks2wait, sig2watch, goal_value);
+endtask
+
+
+endmodule
