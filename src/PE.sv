@@ -1,134 +1,136 @@
 `default_nettype none
 
 module PE #(
-    parameter N            = 8,
-    parameter DATA_WIDTH   = 16,
-    parameter ACCUM_WIDTH  = 2*DATA_WIDTH
+    parameter int N           = 8,
+    parameter int DATA_WIDTH  = 16,
+    parameter int ACCUM_WIDTH = 2*DATA_WIDTH
 ) (
     // Basic Inputs
-    input  wire                                rst_n,
-    input  wire                              clk,
+    input  wire                        clk,
+    input  wire                        rst_n,
 
     // Control Inputs
-    input  wire logic                               init,
+    input  wire                        load_row,  // load row[] into local buffer
+    input  wire                        start,     // start one dot product
 
     // Data Inputs
-    input  wire signed [DATA_WIDTH-1:0] row [0:N-1],
-    input  wire signed [DATA_WIDTH-1:0] col [0:N-1],
+    input  wire signed [DATA_WIDTH-1:0] row [0:N-1],  // A[i,*]
+    input  wire signed [DATA_WIDTH-1:0] col_entry,    // B[k,j] each cycle
 
-    // Data Outputs 
-    output wire signed  [ACCUM_WIDTH-1:0] total,
-    output wire                          rdy,
-    output wire                          err
+    // Control Outputs
+    output logic                       busy,      // high while consuming N beats
+    output logic                       done,      // 1-cycle pulse when the dot is done
+    output wire                        err,
+
+
+    // Data Outputs
+    output wire signed [ACCUM_WIDTH-1:0] total
 );
 
-    localparam INC_WIDTH = $clog2(N);
-    logic running;
-    logic clr;
+    /**************************************************************************
+    ***                               Declarations                          ***
+    **************************************************************************/
+    localparam int K_WIDTH = (N <= 1) ? 1 : $clog2(N); // 0-N-1
+    logic [K_WIDTH-1:0] k;        // Row index for B and Col ndex for A
 
+    logic signed [DATA_WIDTH-1:0] row_buffer [0:N-1];
+
+    logic             init;     // pulse at true start to clear accumulator
+
+    typedef enum logic [1:0] {
+        IDLE,
+        COMPUTE,
+        SYNC,
+        DONE
+    } pe_state;
+    
+    pe_state curr_state, next_state;
 
     /**************************************************************************
-    ***                            MOEW                             ***
+    ***                          General Assignments                        ***
     **************************************************************************/
-    logic signed [DATA_WIDTH-1:0]row_shift_reg[0:N-1];
-    logic signed [DATA_WIDTH-1:0]col_shift_reg[0:N-1];
-    
-
-   always_ff @(posedge clk) 
-        if (init) begin
-            row_shift_reg <= row;       
-            col_shift_reg <= col;
-        end 
-        else if (running) begin
-            for (int i = 0; i < N - 1; i++) begin
-                row_shift_reg[i] <= row_shift_reg[i+1];
-                col_shift_reg[i] <= col_shift_reg[i+1];
-            end
-            row_shift_reg[N-1] <= '0;
-            col_shift_reg[N-1] <= '0;
-         end
-
-    
-
-
-    
-    /**************************************************************************
-    ***                           MAC Instantiation                         ***
-    **************************************************************************/
-    MAC #(
-        .DATA_WIDTH  (DATA_WIDTH),
-        .ACCUM_WIDTH (ACCUM_WIDTH)
-    ) MAC (
-        // Basic Inputs
-        .rst_n       (rst_n),
-        .clk         (clk),
-
-        // Control Inputs
-        .clr         (clr),
-        .running     (running),
-
-        // Data Inputs
-        .in1         (row_shift_reg[0]), //taking the 0th element of the array
-        .in2         (col_shift_reg[0]),
-        
-        // Data Outputs 
-        .total       (total),
-        .err         (err)
-    );
-
-
+    assign init = start & ~busy; 
 
     /**************************************************************************
-    ***                               Incrementorr                          ***
+    ***                               Row Buffer                            ***
     **************************************************************************/
-    reg [INC_WIDTH:0] cycles;
-    
-    always_ff @(posedge clk, negedge rst_n) begin
-        if (~rst_n) 
-            cycles <= '0; //TODO see if u can remove this later as im worried about unknows
-        else if (clr)
-            cycles <= '0;
-        else if (running)
-            cycles <= cycles + 1'b1;
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (~rst_n) begin
+            for (int t = 0; t < N; t++) row_buffer[t] <= '0;
+        end else if (load_row) begin
+            row_buffer <= row;
+        end
     end
-        
-    /**************************************************************************
-    ***                              State Machine                          ***
-    **************************************************************************/
-    typedef enum reg {IDLE, RUN} STATE_t;
-    STATE_t curr_state, next_state;
 
+    /**************************************************************************
+    ***                               Incrementor                           ***
+    **************************************************************************/
     always_ff @(posedge clk, negedge rst_n) begin
-        if (~rst_n) 
+        if (~rst_n)
+            k <= '0;
+        else if (init | ~busy) 
+            k <= '0;
+        else if (busy && k != N-1) 
+            k <= k + 1'b1;           
+    end
+
+    /**************************************************************************
+    ***                            State Machine                            ***
+    **************************************************************************/
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (~rst_n)
             curr_state <= IDLE;
-        else 
-            curr_state <= next_state; 
+        else
+            curr_state <= next_state;
     end
 
     always_comb begin
         next_state = curr_state;
-        running = 1'b0;
-        clr = 1'b0;
-        
+        busy  = 1'b0;
+        done  = 1'b0;
 
-        case (curr_state) 
-            IDLE : 
+        case (curr_state)
+            IDLE: begin
                 if (init) begin
-                    clr = 1'b1;
-                    next_state = RUN;
+                    done       = 1'b0;
+                    busy       = 1'b1;
+                    next_state = COMPUTE;
                 end
-            RUN : begin
-                running = 1'b1;
-
-                if (cycles == N) begin
-                    next_state = IDLE;
-                end 
             end
-
+            COMPUTE: begin
+                busy = 1'b1;                 // keep busy high through last valid pair
+                if (k == N-1) begin
+                    next_state = SYNC;       
+                end
+            end
+            SYNC: begin
+                next_state = DONE;
+            end
+            DONE: begin
+                done       = 1'b1;           // total is now valid
+                next_state = IDLE;
+            end
         endcase
     end
 
-
+    /**************************************************************************
+    ***                               Row Buffer                            ***
+    **************************************************************************/
+    wire running = busy | (curr_state == SYNC); // ensure final add in SYNC
+    MAC #(
+        .DATA_WIDTH  (DATA_WIDTH),
+        .ACCUM_WIDTH (ACCUM_WIDTH)
+    ) MAC (
+        .rst_n    (rst_n),
+        .clk      (clk),
+        .clr      (init),           // clear accumulator at dot start
+        .running  (running),        // enables acc pipeline (II=1)
+        .in1      (row_buffer[k]),  // A[i,k] (never OOB)
+        .in2      (col_entry),      // B[k,j] (streamed)
+        .total    (total),
+        .err      (err)
+    );
 
 endmodule
+
 `default_nettype wire

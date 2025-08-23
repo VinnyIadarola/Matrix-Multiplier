@@ -17,25 +17,38 @@ module MAC #(
     input  wire signed [DATA_WIDTH-1:0] in2,
     
     // Data Outputs 
-    output reg  signed [ACCUM_WIDTH-1:0] total,
-    output reg                           err
+    output logic signed [ACCUM_WIDTH-1:0] total,
+    output logic                          err
 );
 
 
 
     /**************************************************************************
-    ***                            Calculations                             ***
+    ***                            Declarations                             ***
     **************************************************************************/
     wire signed [2*DATA_WIDTH-1:0] product;
-    wire signed [ACCUM_WIDTH-1:0] SExt_product;
+    logic signed [ACCUM_WIDTH-1:0] SExt_product;
     wire signed [ACCUM_WIDTH-1:0] new_total;
 
-    assign product = in1 * in2;
-    assign SExt_product = {{(ACCUM_WIDTH-(2*DATA_WIDTH)){product[2*DATA_WIDTH-1]}}, product};
-    assign new_total = total + SExt_product;
+
 
     /**************************************************************************
-    ***                              Accumulater                            ***
+    ***                            Multiply Stage                           ***
+    **************************************************************************/
+    always_ff @(posedge clk, negedge rst_n) begin
+        if(~rst_n) 
+            SExt_product <= '0;
+        else if(running)
+            SExt_product <= {{(ACCUM_WIDTH-(2*DATA_WIDTH)){product[2*DATA_WIDTH-1]}}, product};
+        
+    end
+
+    assign product = in1 * in2;
+
+
+
+    /**************************************************************************
+    ***                            Accumulate Stage                         ***
     **************************************************************************/
     always_ff @(posedge clk, negedge rst_n) begin
         if (~rst_n)
@@ -45,6 +58,8 @@ module MAC #(
         else if (running)
             total <= new_total;
     end
+
+    assign new_total = total + SExt_product;
 
 
 
@@ -65,7 +80,4 @@ module MAC #(
         else if (running)
             err <= err | ovf_next;
     end
-
-
-
 endmodule
