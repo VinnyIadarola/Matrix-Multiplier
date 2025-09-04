@@ -18,7 +18,6 @@ module PE #(
     input  wire signed [DATA_WIDTH-1:0] col_entry,    // B[k,j] each cycle
 
     // Control Outputs
-    output logic                       busy,      // high while consuming N beats
     output logic                       done,      // 1-cycle pulse when the dot is done
     output wire                        err,
 
@@ -46,6 +45,10 @@ module PE #(
     
     pe_state curr_state, next_state;
 
+
+    logic busy;   // high while consuming N beats
+
+
     /**************************************************************************
     ***                          General Assignments                        ***
     **************************************************************************/
@@ -54,7 +57,7 @@ module PE #(
     /**************************************************************************
     ***                               Row Buffer                            ***
     **************************************************************************/
-    always_ff @(posedge clk or negedge rst_n) begin
+    always_ff @(posedge clk, negedge rst_n) begin
         if (~rst_n) begin
             for (int t = 0; t < N; t++) row_buffer[t] <= '0;
         end else if (load_row) begin
@@ -68,7 +71,7 @@ module PE #(
     always_ff @(posedge clk, negedge rst_n) begin
         if (~rst_n)
             k <= '0;
-        else if (init | ~busy) 
+        else if (init) 
             k <= '0;
         else if (busy && k != N-1) 
             k <= k + 1'b1;           
@@ -77,7 +80,7 @@ module PE #(
     /**************************************************************************
     ***                            State Machine                            ***
     **************************************************************************/
-    always_ff @(posedge clk or negedge rst_n) begin
+    always_ff @(posedge clk, negedge rst_n) begin
         if (~rst_n)
             curr_state <= IDLE;
         else
@@ -93,7 +96,6 @@ module PE #(
             IDLE: begin
                 if (init) begin
                     done       = 1'b0;
-                    busy       = 1'b1;
                     next_state = COMPUTE;
                 end
             end
@@ -116,19 +118,19 @@ module PE #(
     /**************************************************************************
     ***                               Row Buffer                            ***
     **************************************************************************/
-    wire running = busy | (curr_state == SYNC); // ensure final add in SYNC
+    wire run = busy | (curr_state == SYNC); // ensure final add in SYNC
     MAC #(
         .DATA_WIDTH  (DATA_WIDTH),
         .ACCUM_WIDTH (ACCUM_WIDTH)
     ) MAC (
-        .rst_n    (rst_n),
-        .clk      (clk),
-        .clr      (init),           // clear accumulator at dot start
-        .running  (running),        // enables acc pipeline (II=1)
-        .in1      (row_buffer[k]),  // A[i,k] (never OOB)
-        .in2      (col_entry),      // B[k,j] (streamed)
-        .total    (total),
-        .err      (err)
+        .rst_n (rst_n),
+        .clk   (clk),
+        .clr   (init),           
+        .run   (run),       
+        .in1   (row_buffer[k]),  // A[i,k] 
+        .in2   (col_entry),      // B[k,j] 
+        .total (total),
+        .err   (err)
     );
 
 endmodule
