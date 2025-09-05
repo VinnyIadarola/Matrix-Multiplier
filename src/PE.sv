@@ -1,7 +1,7 @@
 `default_nettype none
 
 module PE #(
-    parameter int N           = 8,
+    parameter int P           = 8,
     parameter int DATA_WIDTH  = 16,
     parameter int ACCUM_WIDTH = 2*DATA_WIDTH
 ) (
@@ -14,7 +14,7 @@ module PE #(
     input  wire                        start,     // start one dot product
 
     // Data Inputs
-    input  wire signed [DATA_WIDTH-1:0] row [0:N-1],  // A[i,*]
+    input  wire signed [DATA_WIDTH-1:0] row [0:P-1],  // A[i,*]
     input  wire signed [DATA_WIDTH-1:0] col_entry,    // B[k,j] each cycle
 
     // Control Outputs
@@ -29,23 +29,23 @@ module PE #(
     /**************************************************************************
     ***                               Declarations                          ***
     **************************************************************************/
-    localparam int K_WIDTH = (N <= 1) ? 1 : $clog2(N); // 0-N-1
+    localparam int K_WIDTH = (P <= 1) ? 1 : $clog2(P); // 0-N-1
     logic [K_WIDTH-1:0] k;        // Row index for B and Col ndex for A
 
-    logic signed [DATA_WIDTH-1:0] row_buffer [0:N-1];
+    logic signed [DATA_WIDTH-1:0] row_buffer [0:P-1];
 
     logic             init;     // pulse at true start to clear accumulator
 
     typedef enum logic [1:0] {
         IDLE,
         COMPUTE,
-        SYNC,
-        DONE
+        SYNC
     } pe_state;
     
     pe_state curr_state, next_state;
 
 
+    logic set_done;
     logic busy;   // high while consuming N beats
 
 
@@ -54,13 +54,32 @@ module PE #(
     **************************************************************************/
     assign init = start & ~busy; 
 
+
+
+
+
+    /**************************************************************************
+    ***                           Done Flip flop                           ***
+    **************************************************************************/
+    always_ff @(posedge clk, negedge rst_n) begin
+        if(~rst_n)
+            done <= '0;
+        else if (init) 
+            done <= '0;
+        else if (set_done)
+            done <= '1;
+    end
+
+
+
+
     /**************************************************************************
     ***                               Row Buffer                            ***
     **************************************************************************/
     always_ff @(posedge clk, negedge rst_n) begin
         if (~rst_n) begin
             for (int t = 0; t < N; t++) row_buffer[t] <= '0;
-        end else if (load_row) begin
+        end else if (load_row & ~busy) begin
             row_buffer <= row;
         end
     end
@@ -76,7 +95,7 @@ module PE #(
         else if (busy && k != N-1) 
             k <= k + 1'b1;           
     end
-
+ 
     /**************************************************************************
     ***                            State Machine                            ***
     **************************************************************************/
@@ -90,30 +109,30 @@ module PE #(
     always_comb begin
         next_state = curr_state;
         busy  = 1'b0;
-        done  = 1'b0;
+        set_done  = 1'b0;
 
         case (curr_state)
             IDLE: begin
                 if (init) begin
-                    done       = 1'b0;
+                    set_done  = 1'b0;
                     next_state = COMPUTE;
                 end
             end
             COMPUTE: begin
                 busy = 1'b1;                 // keep busy high through last valid pair
-                if (k == N-1) begin
+                if (k == P-1) begin
                     next_state = SYNC;       
                 end
             end
             SYNC: begin
-                next_state = DONE;
-            end
-            DONE: begin
-                done       = 1'b1;           // total is now valid
+                set_done  = 1'b1;           // total is now valid
                 next_state = IDLE;
             end
+            default: next_state = IDLE;
         endcase
     end
+
+
 
     /**************************************************************************
     ***                               Row Buffer                            ***
