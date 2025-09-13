@@ -78,7 +78,7 @@ module PE #(
     **************************************************************************/
     always_ff @(posedge clk, negedge rst_n) begin
         if (~rst_n) begin
-            for (int t = 0; t < N; t++) row_buffer[t] <= '0;
+            for (int t = 0; t < P; t++) row_buffer[t] <= '0;
         end else if (load_row & ~busy) begin
             row_buffer <= row;
         end
@@ -92,7 +92,7 @@ module PE #(
             k <= '0;
         else if (init) 
             k <= '0;
-        else if (busy && k != N-1) 
+        else if (busy && k != P-1) 
             k <= k + 1'b1;           
     end
  

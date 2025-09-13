@@ -55,7 +55,9 @@ task automatic checkValues1 (
         end
     join
 
-    @(negedge refclk)
+     if (valHold)
+        @(negedge refclk);
+        
     if (sig2watch === goal_value)
         $display("Passed.");
     else if (signalAsserted & valHold) begin
@@ -95,7 +97,8 @@ task automatic checkValues6 (
         end
     join
 
-    @(negedge refclk)
+    if (valHold)
+        @(negedge refclk);
     if (sig2watch === goal_value) begin
         $display("Passed.");
     end
@@ -135,7 +138,9 @@ task automatic checkValues8 (
         end
     join
 
-    @(negedge refclk)
+    if (valHold)
+        @(negedge refclk);
+
     if (sig2watch === goal_value) begin
         $display("Passed.");
     end
@@ -175,7 +180,8 @@ task automatic checkValues16 (
         end
     join
 
-    @(negedge refclk)
+    if (valHold)
+        @(negedge refclk);
     if (sig2watch === goal_value) begin
         $display("Passed.");
     end
