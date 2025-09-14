@@ -13,8 +13,10 @@ module matrix_multiplier #(
     input wire rst_n,
 
     // Control Inputs
-    input wire mem_stall,
+    input wire fetch_stall,
+    input wire data_stall,
     input wire pop_fifo,
+
 
     input wire start,
 
@@ -41,12 +43,14 @@ module matrix_multiplier #(
     **********************************************************************/
     wire start_PE;
     wire load_row;
-   
+    wire insert;
+    wire p;
 
 
-    wire PE_done[0:1];
+    logic [1:0] PE_done;
     wire [ACCUM_WIDTH-1:0] PE_total;
 
+    wire col_entry;
 
 
 
@@ -56,29 +60,30 @@ module matrix_multiplier #(
     ******                      Processing Element                   ******
     **********************************************************************/
     control_unit #(
-        .N              (N),
-        .M              (M)
+        .N              (2),
+        .M              (2)
     ) controller (
         // Basic Inputs
         .clk            (clk),
         .rst_n          (rst_n),
 
         // Control Inputs
-        .start          (start),
-        .mem_stall      (mem_stall),
+        .start          (start),    
+        .fetch_stall    (fetch_stall),
         .fifo_full      (fifo_full),
         .PE_ready       (PE_done),
+        .data_stall     (data_stall),
 
-        //Control Outputs
-        .start_PE       (start_PE),
-        .done           (done),
-        .load_row       (load_row),
-        .fetch_row      (fetch_row),
-        .fetch_col      (fetch_col),
-        .n              (n),
-        .m              (m)
+
+        // Control Outputs
+        .start_PE       (start_PE), // 1-cycle pulse when issuing work
+        .done           (done), // latched high after completion until `start`
+        .load_row       (load_row), // 1-cycle pulse to load the row into register
+        .fetch_row      (fetch_row), // 1-cycle pulse when stall conditions clear
+        .fetch_col      (fetch_col), // 1-cycle pulse when stall conditions clear
+        .n              (n), // row index [0..N-1]
+        .m              (m) // col index [0..M-1]
     );
-
 
 
     /**********************************************************************
@@ -110,8 +115,7 @@ module matrix_multiplier #(
         .total          (PE_total)
     );
 
-
-    wire col_entry = mem_buffer[p];
+    assign col_entry = mem_buffer[p];
 
 
     /**********************************************************************
@@ -125,25 +129,25 @@ module matrix_multiplier #(
         .clk           (clk),
         .rst_n         (rst_n),
         // Data Inputs
-        .entry         (PE_toal),
+        .entry         (PE_total),
         // Control Inputs
         .insert        (insert),
-        .pop           (pop),
+        .pop           (pop_fifo),
         // no edge detection wizll activate every cycle
 
         //Data Outputs
         .head          (fifo_head),
         // Control Outputs
         .full          (fifo_full),
-        .empty         (empty)
+        .empty         (fifo_empty)
     );
 
-    wire insert = PE_done[0] & ~PE_done[1];
+    assign insert = PE_done[0] & ~PE_done[1];
     always_ff @(posedge clk, negedge rst_n)
         if (~rst_n)
             PE_done[1] <= '0;
         else 
-            PE_done[1] <= PE_done[2];
+            PE_done[1] <= PE_done[0];
 
 
 
