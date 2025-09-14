@@ -4,7 +4,8 @@ module PE #(
     parameter int P           = 8,
     parameter int DATA_WIDTH  = 16,
     parameter int ACCUM_WIDTH = 2*DATA_WIDTH,
-    parameter int P_WIDTH = (P <= 1) ? 1 : $clog2(P)
+    localparam int unsigned P_BIT_WIDTH = (P > 1) ? $clog2(P) : 1
+
 ) (
     // Basic Inputs
     input  wire                        clk,
@@ -19,8 +20,8 @@ module PE #(
     input  wire signed [DATA_WIDTH-1:0] col_entry,    // B[p,j] each cycle
 
     // Control Outputs
-    output logic                       done,      // 1-cycle pulse when the dot is done
-    output logic         [P_WIDTH-1:0] p,        // Row index for B and Col ndex for A
+    output logic                       ready,      // held when the dot is ready
+    output logic         [P_BIT_WIDTH-1:0] p,        // Row index for B and Col ndex for A
     output wire                        err,
 
 
@@ -46,7 +47,7 @@ module PE #(
     pe_state curr_state, next_state;
 
 
-    logic set_done;
+    logic set_ready;
     logic busy;   // high while consuming N beats
 
 
@@ -60,15 +61,15 @@ module PE #(
 
 
     /**************************************************************************
-    ***                           Done Flip flop                           ***
+    ***                           ready Flip flop                           ***
     **************************************************************************/
     always_ff @(posedge clk, negedge rst_n) begin
         if(~rst_n)
-            done <= '0;
+            ready <= '1;
         else if (init) 
-            done <= '0;
-        else if (set_done)
-            done <= '1;
+            ready <= '0;
+        else if (set_ready)
+            ready <= '1;
     end
 
 
@@ -110,12 +111,12 @@ module PE #(
     always_comb begin
         next_state = curr_state;
         busy  = 1'b0;
-        set_done  = 1'b0;
+        set_ready  = 1'b0;
 
         case (curr_state)
             IDLE: begin
                 if (init) begin
-                    set_done  = 1'b0;
+                    set_ready  = 1'b0;
                     next_state = COMPUTE;
                 end
             end
@@ -126,7 +127,7 @@ module PE #(
                 end
             end
             SYNC: begin
-                set_done  = 1'b1;           // total is now valid
+                set_ready  = 1'b1;           // total is now valid
                 next_state = IDLE;
             end
             default: next_state = IDLE;

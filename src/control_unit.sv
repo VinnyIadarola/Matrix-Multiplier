@@ -51,13 +51,14 @@ module control_unit #(
     logic set_done;
 
 
-    // convenience predicates
-    logic last_row = (n == N-1);
-    logic last_col = (m == M-1);
+    logic last_row, last_col, can_issue, can_fetch;
+
+    assign last_row = (n == N-1);
+    assign last_col = (m == M-1);
 
     // You can issue to PE if it’s ready and you aren’t stalled by output or inputs
-    logic can_issue = (PE_ready & ~fifo_full & ~data_stall);
-
+    assign can_fetch = (PE_ready & ~fetch_stall);
+    assign can_issue = (PE_ready & ~fifo_full & ~data_stall);
 
 
 
@@ -103,6 +104,7 @@ module control_unit #(
         load_row   = 1'b0;
         fetch_row  = 1'b0;
         fetch_col  = 1'b0;
+        set_done   = 1'b0;
 
         case (curr_state)
             IDLE: begin
@@ -115,7 +117,7 @@ module control_unit #(
 
             FETCH_ROW: begin
                 // hold fetch_row until we’re allowed to pull the row
-                if (~fetch_stall) begin
+                if (can_fetch) begin
                     fetch_row = 1'b1;
                     next_state = PREP_ROW;
                 end
@@ -125,14 +127,14 @@ module control_unit #(
                 //Wait until the data is ready to load
                 if (~data_stall) begin
                     load_row  = 1'b1;
-                    next_state   = FETCH_ROW;
+                    next_state = FETCH_COL;
                 end
             end
 
 
             FETCH_COL: begin
                 // Hold until we can grab the current cp;
-                if (~fetch_stall) begin
+                if (can_fetch) begin
                     fetch_col = 1'b1;
                     next_state = ISSUE_PE;
                 end

@@ -4,6 +4,11 @@ module matrix_multiplier #(
     parameter N           = 8,
     parameter P           = 9,
     parameter M           = 10,
+
+    parameter int unsigned N_BIT_WIDTH = (N > 1) ? $clog2(N) : 1,
+    localparam int unsigned P_BIT_WIDTH = (P > 1) ? $clog2(P) : 1,
+    localparam int unsigned M_BIT_WIDTH = (M > 1) ? $clog2(M) : 1,
+
     parameter DATA_WIDTH  = 16,
     parameter ACCUM_WIDTH = 2*DATA_WIDTH,
     parameter FIFO_SIZE   = 20
@@ -21,15 +26,15 @@ module matrix_multiplier #(
     input wire start,
 
     // Data Inputs
-    input wire [DATA_WIDTH-1:0] mem_buffer [0:N-1],
+    input wire [DATA_WIDTH-1:0] mem_line [0:N-1],
     
 
     // Control Outputs
-    output wire n,
-    output wire m,
+    output wire [N_BIT_WIDTH-1:0]     n,           // row index [0..N-1]
+    output wire [M_BIT_WIDTH-1:0]     m,            // col index [0..M-1]
     output wire fetch_row,
     output wire fetch_col,
-    output wire [DATA_WIDTH-1:0] fifo_head,
+    output wire [ACCUM_WIDTH-1:0] fifo_head,
     output wire fifo_empty,
     output wire fifo_full,
     output wire done,
@@ -47,10 +52,9 @@ module matrix_multiplier #(
     wire p;
 
 
-    logic [1:0] PE_done;
+    logic [1:0] PE_ready;
     wire [ACCUM_WIDTH-1:0] PE_total;
-
-    wire col_entry;
+    wire [DATA_WIDTH-1:0] col_entry;
 
 
 
@@ -60,8 +64,8 @@ module matrix_multiplier #(
     ******                      Processing Element                   ******
     **********************************************************************/
     control_unit #(
-        .N              (2),
-        .M              (2)
+        .N              (N),
+        .M              (M)
     ) controller (
         // Basic Inputs
         .clk            (clk),
@@ -71,7 +75,7 @@ module matrix_multiplier #(
         .start          (start),    
         .fetch_stall    (fetch_stall),
         .fifo_full      (fifo_full),
-        .PE_ready       (PE_done),
+        .PE_ready       (PE_ready[1]),
         .data_stall     (data_stall),
 
 
@@ -90,9 +94,9 @@ module matrix_multiplier #(
     ******                      Processing Element                   ******
     **********************************************************************/
     PE #(
-        .N              (8),
-        .DATA_WIDTH     (16),
-        .ACCUM_WIDTH    (2*DATA_WIDTH)
+        .P              (P),
+        .DATA_WIDTH     (DATA_WIDTH),
+        .ACCUM_WIDTH    (ACCUM_WIDTH)
     ) PE (
         // Basic Inputs
         .clk            (clk),
@@ -103,11 +107,11 @@ module matrix_multiplier #(
         .start          (start_PE), // start one dot product
 
         // Data Inputs
-        .row            (mem_buffer),
+        .row            (mem_line),
         .col_entry      (col_entry),
 
         // Control Outputs
-        .done           (PE_done[0]), // 1-cycle pulse when the dot is done
+        .ready          (PE_ready[0]),
         .err            (err),
         .p              (p),
 
@@ -115,14 +119,14 @@ module matrix_multiplier #(
         .total          (PE_total)
     );
 
-    assign col_entry = mem_buffer[p];
+    assign col_entry = mem_line[p];
 
 
     /**********************************************************************
     ******                         Output Queue                      ******
     **********************************************************************/
     ring_buffer #(
-        .DATA_WIDTH    (N),
+        .DATA_WIDTH    (ACCUM_WIDTH),
         .FIFO_SIZE     (FIFO_SIZE)
     ) ring_buffer (
         // Basic Inputs
@@ -142,12 +146,12 @@ module matrix_multiplier #(
         .empty         (fifo_empty)
     );
 
-    assign insert = PE_done[0] & ~PE_done[1];
+    assign insert = PE_ready[0] & ~PE_ready[1];
     always_ff @(posedge clk, negedge rst_n)
         if (~rst_n)
-            PE_done[1] <= '0;
+            PE_ready[1] <= '1;
         else 
-            PE_done[1] <= PE_done[0];
+            PE_ready[1] <= PE_ready[0];
 
 
 
