@@ -3,7 +3,7 @@ import testing_pkg::*;
 /**************************************************************************
 ***                            Testbench Top                             ***
 **************************************************************************/
-module iteration_controller_tb();
+module control_unit_tb();
 
   /**************************************************************************
   ***                                Params                                ***
@@ -34,7 +34,7 @@ module iteration_controller_tb();
   /**************************************************************************
   ***                        Devices Under Testing                         ***
   **************************************************************************/
-  iteration_controller #(
+  control_unit #(
       .N (N),
       .M (M)
   ) iDUT (
@@ -243,7 +243,6 @@ module iteration_controller_tb();
     join_any
     disable fork;
     $display("pass test 3");
-
 
     print_all_passed_banner();
   end

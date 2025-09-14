@@ -1,8 +1,10 @@
 `default_nettype none
 
-module iteration_controller #(
+module control_unit #(
     parameter N,
-    parameter M
+    parameter M,
+    parameter N_BIT_WIDTH = (N > 0) ? $clog2(N) : 1,
+    parameter M_BIT_WIDTH = (M > 0) ? $clog2(M) : 1
 ) (
     // Basic Inputs
     input wire clk,
@@ -10,18 +12,22 @@ module iteration_controller #(
 
     // Control Inputs
     input wire start,
-    input wire mem_stall,
+    input wire fetch_stall,
     input wire fifo_full,
     input wire PE_ready,
+    input wire data_stall,
 
     //Control Outputs
     output logic start_PE,
     output logic done,
-    output logic load_row
+    output logic load_row,
+    output logic fetch_row,
+    output logic fetch_col, 
+    output logic [N_BIT_WIDTH-1:0] n,
+    output logic [M_BIT_WIDTH-1:0] m
 );
     
-    localparam N_BIT_WIDTH = (N > 0) ? $clog2(N) : 1;
-    localparam M_BIT_WIDTH = (M > 0) ? $clog2(M) : 1;
+
 
 
 
@@ -32,11 +38,10 @@ module iteration_controller #(
     logic busy;
     logic set_done;
 
-    logic [N_BIT_WIDTH-1:0] n; 
-    logic [M_BIT_WIDTH-1:0] m;
 
 
-    typedef enum logic[1:0] {IDLE, COLS, LOAD_ROW} state_t;
+
+    typedef enum logic[1:0] {IDLE, COLS, LOAD_ROW, FETCH_COL} state_t;
     state_t curr_state, next_state;
 
     /**********************************************************************
@@ -46,7 +51,7 @@ module iteration_controller #(
     assign init = start & ~mem_stall & ~fifo_full & ~busy;
 
 
-    assign start_PE = (PE_ready) & (curr_state == COLS) & ~(mem_stall | fifo_full);
+    assign start_PE = (PE_ready) & (moew) & ~(data_stall | fifo_full);
  
 
 
@@ -66,6 +71,9 @@ module iteration_controller #(
         busy  = 1'b0;
         set_done  = 1'b0;
         load_row = 1'b0;
+        fetch_col = 1'b0;
+        fetch_row = 1'b0;
+        meow = 1'b0;
 
         case (curr_state)
             IDLE: begin
@@ -78,21 +86,25 @@ module iteration_controller #(
             end
             COLS: begin
                 busy = 1'b1; 
-             
-                if (m == M-1) begin //iterated through all columns next row
-                    next_state = LOAD_ROW;  
+                meow = 1'b1;
 
-                    if (n == N-1) begin
-                        set_done  = 1'b1;           
-                        next_state = IDLE;
-                    end  
+                if (m == M-1 && n == N-1) begin
+                    set_done  = 1'b1;           
+                    next_state = IDLE;   
+                end 
+                else if (m == M-1) begin
+                    next_state = LOAD_ROW;  
+                    fetch_row = 1'b1;
                 end
+
+
             end
             LOAD_ROW: begin
                 busy = 1'b1;                
                 if (~mem_stall) begin
                     next_state = COLS;
                     load_row = 1'b1;
+                    fetch_col = 1'b1;
                 end
 
             end     

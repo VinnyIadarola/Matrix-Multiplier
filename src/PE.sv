@@ -3,7 +3,8 @@
 module PE #(
     parameter int P           = 8,
     parameter int DATA_WIDTH  = 16,
-    parameter int ACCUM_WIDTH = 2*DATA_WIDTH
+    parameter int ACCUM_WIDTH = 2*DATA_WIDTH,
+    parameter int P_WIDTH = (P <= 1) ? 1 : $clog2(P)
 ) (
     // Basic Inputs
     input  wire                        clk,
@@ -15,10 +16,11 @@ module PE #(
 
     // Data Inputs
     input  wire signed [DATA_WIDTH-1:0] row [0:P-1],  // A[i,*]
-    input  wire signed [DATA_WIDTH-1:0] col_entry,    // B[k,j] each cycle
+    input  wire signed [DATA_WIDTH-1:0] col_entry,    // B[p,j] each cycle
 
     // Control Outputs
     output logic                       done,      // 1-cycle pulse when the dot is done
+    output logic         [P_WIDTH-1:0] p,        // Row index for B and Col ndex for A
     output wire                        err,
 
 
@@ -29,8 +31,7 @@ module PE #(
     /**************************************************************************
     ***                               Declarations                          ***
     **************************************************************************/
-    localparam int K_WIDTH = (P <= 1) ? 1 : $clog2(P); // 0-N-1
-    logic [K_WIDTH-1:0] k;        // Row index for B and Col ndex for A
+    
 
     logic signed [DATA_WIDTH-1:0] row_buffer [0:P-1];
 
@@ -89,11 +90,11 @@ module PE #(
     **************************************************************************/
     always_ff @(posedge clk, negedge rst_n) begin
         if (~rst_n)
-            k <= '0;
+            p <= '0;
         else if (init) 
-            k <= '0;
-        else if (busy && k != P-1) 
-            k <= k + 1'b1;           
+            p <= '0;
+        else if (busy && p != P-1) 
+            p <= p + 1'b1;           
     end
  
     /**************************************************************************
@@ -120,7 +121,7 @@ module PE #(
             end
             COMPUTE: begin
                 busy = 1'b1;                 // keep busy high through last valid pair
-                if (k == P-1) begin
+                if (p == P-1) begin
                     next_state = SYNC;       
                 end
             end
@@ -146,8 +147,8 @@ module PE #(
         .clk   (clk),
         .clr   (init),           
         .run   (run),       
-        .in1   (row_buffer[k]),  // A[i,k] 
-        .in2   (col_entry),      // B[k,j] 
+        .in1   (row_buffer[p]),  // A[i,p] 
+        .in2   (col_entry),      // B[p,j] 
         .total (total),
         .err   (err)
     );
