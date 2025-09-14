@@ -3,7 +3,7 @@
 module PE #(
     parameter int P           = 8,
     parameter int DATA_WIDTH  = 16,
-    parameter int ACCUM_WIDTH = 2*DATA_WIDTH,
+    parameter int ACCUM_WIDTH = 2*DATA_WIDTH + 1,
     localparam int unsigned P_BIT_WIDTH = (P > 1) ? $clog2(P) : 1
 
 ) (

@@ -2,7 +2,7 @@
 
 module MAC #(
     parameter DATA_WIDTH  = 16,
-    parameter ACCUM_WIDTH = 2*DATA_WIDTH
+    parameter ACCUM_WIDTH = 2*DATA_WIDTH + 1
 ) (
     // Basic Inputs
     input  wire                         rst_n,
@@ -43,7 +43,7 @@ module MAC #(
         else if (clr)
             SExt_product <= '0;
         else if(run)
-            SExt_product <= {{(ACCUM_WIDTH-(2*DATA_WIDTH)){next_product[2*DATA_WIDTH-1]}}, next_product};
+            SExt_product <=  next_product;
         
     end
 

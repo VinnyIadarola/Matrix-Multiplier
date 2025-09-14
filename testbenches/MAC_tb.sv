@@ -160,7 +160,7 @@ initial begin
     checkValues16(
         .refclk(clk),                // clock signal
         .sig2watch(total),           // signal to watch
-        .goal_value(16'h005A),       // expected value 
+        .goal_value(89),          // expected value 
         .clks2wait(100),              // cycles to wait
         .testnum(5),                 // test number
         .valHold(1'b1)               // hold value

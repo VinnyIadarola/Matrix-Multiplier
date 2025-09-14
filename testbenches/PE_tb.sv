@@ -9,6 +9,7 @@ module PE_tb();
     localparam   N           = 2;
     localparam   DATA_WIDTH  = 4;
     localparam   ACCUM_WIDTH = 2 * DATA_WIDTH;
+    localparam int unsigned P_BIT_WIDTH = (N > 1) ? $clog2(N) : 1;
 
     // Signals (N=2 instance)
     logic        rst_n;
@@ -20,11 +21,13 @@ module PE_tb();
     logic signed [DATA_WIDTH-1:0]  col [0:N-1];
     logic signed [DATA_WIDTH-1:0]  col_entry;
     logic signed [ACCUM_WIDTH-1:0] total;
-    logic        done;
+    logic        ready;
+    logic       [P_BIT_WIDTH-1:0]  p;
     logic        err;
 
     // Second Instance (N=3)
-    localparam   N3          = 3;
+    localparam   N3 = 3;
+    localparam int unsigned P_BIT_WIDTH3 = (N3 > 1) ? $clog2(N3) : 1;
 
     logic        rst_n3;
     logic        start3;
@@ -34,13 +37,15 @@ module PE_tb();
     logic signed [DATA_WIDTH-1:0]  col3 [0:N3-1];
     logic signed [DATA_WIDTH-1:0]  col_entry3;
     logic signed [ACCUM_WIDTH-1:0] total3;
-    logic        done3;
+    logic        ready3;
+    logic       [P_BIT_WIDTH3-1:0] p3;
     logic        err3;
 
     // Third Instance (N=10, DATA_WIDTH=3)
-    localparam   N10             = 10;
-    localparam   DATA_WIDTH10    = 3;
-    localparam   ACCUM_WIDTH10   = 2 * DATA_WIDTH10;
+    localparam   N10           = 10;
+    localparam   DATA_WIDTH10  = 3;
+    localparam   ACCUM_WIDTH10 = 2 * DATA_WIDTH10;
+    localparam int unsigned P_BIT_WIDTH10 = (N10 > 1) ? $clog2(N10) : 1;
 
     logic        rst_n10;
     logic        start10;
@@ -50,14 +55,15 @@ module PE_tb();
     logic signed [DATA_WIDTH10-1:0]  col10 [0:N10-1];
     logic signed [DATA_WIDTH10-1:0]  col_entry10;
     logic signed [ACCUM_WIDTH10-1:0] total10;
-    logic        done10;
+    logic        ready10;
+    logic       [P_BIT_WIDTH10-1:0]  p10;
     logic        err10;
 
     /**************************************************************************
     ***                            Devices Under Testing                     ***
     **************************************************************************/
     PE #(
-        .N              (N),
+        .P              (N),
         .DATA_WIDTH     (DATA_WIDTH),
         .ACCUM_WIDTH    (ACCUM_WIDTH)
     ) iDUT (
@@ -68,12 +74,13 @@ module PE_tb();
         .row        (row),
         .col_entry  (col_entry),
         .total      (total),
-        .done       (done),
+        .ready   (ready),
+        .p          (p),
         .err        (err)
     );
 
     PE #(
-        .N              (N3),
+        .P              (N3),
         .DATA_WIDTH     (DATA_WIDTH),
         .ACCUM_WIDTH    (ACCUM_WIDTH)
     ) iDUT3 (
@@ -84,12 +91,13 @@ module PE_tb();
         .row        (row3),
         .col_entry  (col_entry3),
         .total      (total3),
-        .done       (done3),
+        .ready   (ready3),
+        .p          (p3),
         .err        (err3)
     );
 
     PE #(
-        .N              (N10),
+        .P              (N10),
         .DATA_WIDTH     (DATA_WIDTH10),
         .ACCUM_WIDTH    (ACCUM_WIDTH10)
     ) iDUT10 (
@@ -100,7 +108,8 @@ module PE_tb();
         .row        (row10),
         .col_entry  (col_entry10),
         .total      (total10),
-        .done       (done10),
+        .ready   (ready10),
+        .p          (p10),
         .err        (err10)
     );
 
@@ -152,7 +161,17 @@ module PE_tb();
             .testnum(2.1)
         );
 
-        // Test 2.2: Testing all positives (1*2 + 1*3 = 5)
+        // Test 2.15: ready = 1 during reset hold (idle)
+        checkValues1(
+            .refclk(clk),
+            .sig2watch(ready),
+            .clks2wait(6),
+            .valHold(1'b1),
+            .goal_value(1),
+            .testnum(2.15)
+        );
+
+        // Test 2.2: all positives (1*2 + 1*3 = 5)
         @(posedge clk);
         rst_n = 1'b1;
 
@@ -186,8 +205,28 @@ module PE_tb();
             begin
                 @(negedge clk);
                 start = 1'b0;
+
+                // Test 2.21: ready drops while start=1 (busy)
+                checkValues1(
+                    .refclk(clk),
+                    .sig2watch(ready),
+                    .clks2wait(1),
+                    .valHold(1'b1),
+                    .goal_value(0),
+                    .testnum(2.21)
+                );
             end
         join
+
+        // Test 2.22: ready returns high after compute
+        checkValues1(
+            .refclk(clk),
+            .sig2watch(ready),
+            .clks2wait(6),
+            .valHold(1'b1),
+            .goal_value(1),
+            .testnum(2.22)
+        );
 
         // Test 2.3: clears properly then negatives -> -5
         @(negedge clk);
@@ -513,6 +552,15 @@ module PE_tb();
             .testnum(3.1)
         );
 
+        checkValues1(
+            .refclk(clk),
+            .sig2watch(ready3),
+            .clks2wait(6),
+            .valHold(1'b1),
+            .goal_value(1),
+            .testnum(3.15)
+        );
+
         // Test 3.2: all positives (1*2 + 1*3 + 1*4 = 9)
         @(posedge clk);
         rst_n3 = 1'b1;
@@ -547,8 +595,27 @@ module PE_tb();
             begin
                 @(negedge clk);
                 start3 = 1'b0;
+
+                checkValues1(
+                    .refclk(clk),
+                    .sig2watch(ready3),
+                    .clks2wait(1),
+                    .valHold(1'b1),
+                    .goal_value(0),
+                    .testnum(3.21)
+                );
             end
         join
+
+
+        checkValues1(
+            .refclk(clk),
+            .sig2watch(ready3),
+            .clks2wait(6),
+            .valHold(1'b1),
+            .goal_value(1),
+            .testnum(3.22)
+        );
 
         // Test 3.3: negatives = -9
         @(negedge clk);
@@ -874,6 +941,15 @@ module PE_tb();
             .testnum(10.1)
         );
 
+        checkValues1(
+            .refclk(clk),
+            .sig2watch(ready10),
+            .clks2wait(6),
+            .valHold(1'b1),
+            .goal_value(1),
+            .testnum(10.15)
+        );
+
         // Test 10.2: all positives (ten 1*1 = 10)
         @(posedge clk);
         rst_n10 = 1'b1;
@@ -908,8 +984,28 @@ module PE_tb();
             begin
                 @(negedge clk);
                 start10 = 1'b0;
+
+                checkValues1(
+                    .refclk(clk),
+                    .sig2watch(ready10),
+                    .clks2wait(1),
+                    .valHold(1'b1),
+                    .goal_value(0),
+                    .testnum(10.21)
+                );
             end
         join
+
+
+
+        checkValues1(
+            .refclk(clk),
+            .sig2watch(ready10),
+            .clks2wait(6),
+            .valHold(1'b1),
+            .goal_value(1),
+            .testnum(10.22)
+        );
 
         // Test 10.3: all negatives (ten 1*-1 = -10)
         @(negedge clk);
