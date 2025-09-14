@@ -10,7 +10,7 @@ module matrix_multiplier #(
     localparam int unsigned M_BIT_WIDTH = (M > 1) ? $clog2(M) : 1,
 
     parameter DATA_WIDTH  = 16,
-    parameter ACCUM_WIDTH = 2*DATA_WIDTH,
+    parameter ACCUM_WIDTH = 2*DATA_WIDTH + 1,
     parameter FIFO_SIZE   = 20
 ) (
     // Basic Inputs
